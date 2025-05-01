@@ -1,1 +1,12 @@
 venv/
+.vscode/
+.deployment
+__psycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+*.egg-info
+*.egg
+*.log

@@ -6,6 +6,7 @@ __psycache__
 *.pyo
 *.pyd
 *.db
+*.sqlite
 *.sqlite3
 *.egg-info
 *.egg

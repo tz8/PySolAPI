@@ -1,5 +1,6 @@
 from utils.solar_position import get_sun_position, vector_from_angles, dot_product_efficiency
 from utils.radiation_model import calc_radiation_model
+import pandas as pd
 import numpy as np
 from datetime import timedelta
 import pytz
@@ -32,10 +33,13 @@ def calculate_forecast(data_timeline, ensemble_data, lat, lon, timezone, power, 
             t_local = t_utc.astimezone(pytz.timezone(timezone))
             sun_time = t_utc + timedelta(minutes=30)
 
-            dni = row["direct_normal_irradiance"]
-            diffuse = row["diffuse_radiation"]
-            shortwave = row["shortwave_radiation"]
-            temp = row["temperature_2m"]
+            dni = row.get("direct_normal_irradiance")
+            diffuse = row.get("diffuse_radiation")
+            shortwave = row.get("shortwave_radiation")
+            temp = row.get("temperature_2m")
+
+            if any(pd.isna(val) for val in (dni, diffuse, shortwave, temp)):
+                continue
 
             sun_az, sun_alt = get_sun_position(lat, lon, sun_time)
             sun_vec = vector_from_angles(sun_az, sun_alt)

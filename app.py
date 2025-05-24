@@ -1,7 +1,22 @@
+import numpy as np
+import openmeteo_requests
+import pandas as pd
+import requests_cache
+import yaml
+import json
+
 from flask import Flask, request, jsonify
 from meteo_api import fetch_dwd_icon, fetch_ensemble
 from processor import process_hourly_data
 from calculator import calculate_forecast
+from utils.config_utils import validate_config
+from utils.open_meteo_utils import call_api
+from utils.radiation_model import aggregate_results
+from utils.solar_position import deg_to_rad, get_sun_position, vector_from_angles, dot_product_efficiency
+from openmeteo_sdk.Variable import Variable
+from openmeteo_sdk.Aggregation import Aggregation
+from collections import defaultdict
+from retry_requests import retry
 
 app = Flask(__name__)
 
@@ -9,69 +24,51 @@ app = Flask(__name__)
 def not_found(e):
     return jsonify({'error': 'Invalid path or parameter types'}), 404
 
-@app.route('/forecast/<lat>/<lon>/<power>/<azimuth>/<tilt>', methods=['GET'])
-def forecast(lat, lon, power, azimuth, tilt):
+@app.route('/forecast', methods=['POST'])
+def forecast_post():
 
+    config = request.get_json()
+    if not config:
+        return jsonify({'error': 'No configuration provided'}), 400
+    
+    errors = validate_config(config)
+    if errors:
+        return jsonify({'errors': errors}), 400
+    
     try:
-        lat = float(lat)
-        lon = float(lon)
-    except ValueError:
-        return jsonify({'error': 'lat and lon must be float values like "11.111"'}), 400
+        cache_session = requests_cache.CachedSession('.cache', expire_after = 3600)
+        retry_session = retry(cache_session, retries = 5, backoff_factor = 0.2)
+        openmeteo = openmeteo_requests.Client(session = retry_session)
 
-    try:
-        power = int(power)
-        azimuth = int(azimuth)
-        tilt = int(tilt)
-    except ValueError:
-        return jsonify({'error': 'power, azimuth, and tilt must be integers'}), 400
+        inverters = config["inverters"]
+        all_results = []
+        for inverter in inverters:
+            for pvstring in inverter["pv_strings"]:
+                latitude = config["latitude"]
+                longitude = config["longitude"]
+                inverter_size = inverter["size"]
+                inverter_max_ac = inverter["max_ac"]
+                inverter_eff = inverter.get("inverter_eff", 0.98)
+                pvstring_azimuth = pvstring["azimuth"]
+                pvstring_tilt = pvstring["tilt"]
+                pvstring_wp = pvstring["wp"]
+                pvstring_albedo = pvstring.get("albedo", 0.2)
+                pvstring_cell_coeff = pvstring.get("cell_coeff", 0.0382)
 
+                data = call_api(lat=latitude, lon=longitude, inverter_size=inverter_size, inverter_eff=inverter_eff, pvstring_azimuth=pvstring_azimuth, pvstring_wp=pvstring_wp, pvstring_tilt=pvstring_tilt, pvstring_albedo=pvstring_albedo, pvstring_cell_coeff=pvstring_cell_coeff, openmeteo_session=openmeteo)
+                if not data or "error" in data:
+                    return jsonify({'error': 'Failed to fetch weather data'}), 500
+                all_results.extend(data)
 
-    # hier müssen nun die Berechnungen rein:
-    # 1. Daten vom der open-meteo.com API abfragen
-    # https://ensemble-api.open-meteo.com/v1/ensemble?latitude=50.76&longitude=9.497&tilt=30&hourly=temperature_2m,shortwave_radiation,diffuse_radiation,direct_normal_irradiance&timezone=UTC&forecast_days=3&models=icon_d2
-    # 2. weitere Daten abfragen:
-    # https://api.open-meteo.com/v1/dwd-icon?latitude=50.76&longitude=9.497&hourly=temperature_2m,shortwave_radiation,diffuse_radiation,direct_normal_irradiance&timezone=UTC&past_days=0
+        combined = aggregate_results(all_results)
+        for entry in combined:
+            if isinstance(entry.get("datetime"), pd.Timestamp):
+                entry["datetime"] = entry["datetime"].isoformat()
 
-    # zum Abholen der Daten wird nur lat, lon und tilt benötigt
-
-    try:
-        # Optional query params
-        albedo = float(request.args.get('albedo', 0.2))
-        cell_coeff = float(request.args.get('cellCoeff', 0.04))
-        inverter_eff = float(request.args.get('inverterEff', 0.96))
-        inverter_size = float(request.args.get('inverterSize', power))
-        timezone = request.args.get('timezone', 'Europe/Berlin')
-        debug = request.args.get('debug', 'false').lower() == 'true'
-
-        # Fetch weather data
-        dwd_data = fetch_dwd_icon(lat, lon, timezone)
-        ensemble_data = fetch_ensemble(lat, lon, timezone)
-
-        # Convert to pandas DataFrame
-        df_dwd = process_hourly_data(dwd_data)
-        df_ensemble = process_hourly_data(ensemble_data)  # Not used yet — future: min/max stats
-
-        # Run forecast calculation
-        forecast_result = calculate_forecast(
-            df_dwd,
-            ensemble_data,
-            lat,
-            lon,
-            timezone,
-            power,
-            azimuth,
-            tilt,
-            albedo,
-            cell_coeff,
-            inverter_size,
-            inverter_eff,
-            debug=debug
-        )
-
-        return jsonify({"values": forecast_result})
+        return jsonify({"values": combined})
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({'error': f'Failed to initialize API clients: {str(e)}'}), 500
 
 @app.route('/')
 def home():

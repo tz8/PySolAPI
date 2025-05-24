@@ -21,6 +21,7 @@ pandas==2.2.3
 platformdirs==4.3.7
 python-dateutil==2.9.0.post0
 pytz==2025.2
+PyYAML==6.0.2
 requests==2.32.3
 requests-cache==1.2.1
 retry-requests==2.0.0

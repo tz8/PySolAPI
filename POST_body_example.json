@@ -1,0 +1,48 @@
+{
+  "latitude": 44.444,
+  "longitude": 6.666,
+  "inverters": [
+    {
+      "size": 15000,
+      "max_ac": 10300,
+      "inverter_eff": 0.98,
+      "pv_strings": [
+        {
+          "azimuth": 0,
+          "tilt": 30,
+          "wp": 5550,
+          "albedo": 0.2,
+          "cell_coeff": 0.0328
+        },
+        {
+          "azimuth": 0,
+          "tilt": 10,
+          "wp": 4440,
+          "albedo": 0.2,
+          "cell_coeff": 0.0328
+        }
+      ]
+    },
+    {
+      "size": 10000,
+      "max_ac": 6900,
+      "inverter_eff": 0.98,
+      "pv_strings": [
+        {
+          "azimuth": 90,
+          "tilt": 30,
+          "wp": 3000,
+          "albedo": 0.2,
+          "cell_coeff": 0.0328
+        },
+        {
+          "azimuth": 270,
+          "tilt": 30,
+          "wp": 3000,
+          "albedo": 0.2,
+          "cell_coeff": 0.0328
+        }
+      ]
+    }
+  ]
+}
